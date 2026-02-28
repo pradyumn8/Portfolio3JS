@@ -19,22 +19,22 @@ async function init() {
     // Simulate loading progress
     let progress = 0;
     const progressInterval = setInterval(() => {
-        progress += Math.random() * 12 + 3;
-        if (progress > 92) progress = 92;
+        progress += Math.random() * 15 + 5;
+        if (progress > 90) progress = 90;
         if (loaderBar) loaderBar.style.width = `${progress}%`;
-    }, 180);
+    }, 200);
 
     // Initialize 3D scene
     const scene3d = new Scene3D(canvas);
 
-    // Let scene settle
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Small delay to let everything settle
+    await new Promise(resolve => setTimeout(resolve, 1200));
 
     // Complete loading
     clearInterval(progressInterval);
     if (loaderBar) loaderBar.style.width = '100%';
 
-    await new Promise(resolve => setTimeout(resolve, 600));
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Hide loader
     if (loader) loader.classList.add('hidden');
@@ -42,11 +42,11 @@ async function init() {
     // Show scroll container
     if (scrollContainer) {
         scrollContainer.style.opacity = '1';
-        scrollContainer.style.transition = 'opacity 1s ease';
+        scrollContainer.style.transition = 'opacity 0.8s ease';
     }
 
-    // Wait for transition
-    await new Promise(resolve => setTimeout(resolve, 400));
+    // Wait for DOM transition
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     // Initialize scroll animations
     initAnimations(scene3d);
