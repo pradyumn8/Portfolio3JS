@@ -1,7 +1,9 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /**
  * Creates and manages the Three.js 3D scene with:
+ * - Loaded GLTF laptop model as hero centerpiece
  * - Massive particle system (starfield/nebula)
  * - Floating geometric objects at section positions
  * - Dynamic colored lighting
@@ -16,11 +18,14 @@ export class Scene3D {
         this.mouse = { x: 0, y: 0 };
         this.clock = new THREE.Clock();
         this.sectionObjects = [];
+        this.laptopModel = null;
+        this.loadingProgress = 0;
 
         this.init();
         this.createParticles();
         this.createSectionObjects();
         this.createLights();
+        this.loadLaptopModel();
         this.addEventListeners();
         this.animate();
     }
@@ -40,6 +45,87 @@ export class Scene3D {
         this.renderer.setSize(this.width, this.height);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.setClearColor(0x030014, 1);
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.2;
+    }
+
+    loadLaptopModel() {
+        const loader = new GLTFLoader();
+
+        loader.load(
+            '/models/laptop.glb',
+            (gltf) => {
+                this.laptopModel = gltf.scene;
+
+                // Auto-size the model
+                const box = new THREE.Box3().setFromObject(this.laptopModel);
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 3.5 / maxDim; // Target size ~3.5 units (compact)
+                this.laptopModel.scale.setScalar(scale);
+
+                // Center the model
+                const center = box.getCenter(new THREE.Vector3());
+                this.laptopModel.position.x = -center.x * scale;
+                this.laptopModel.position.y = -center.y * scale;
+                this.laptopModel.position.z = -center.z * scale;
+
+                // Create a group for positioning
+                this.laptopGroup = new THREE.Group();
+                this.laptopGroup.add(this.laptopModel);
+
+                // Start laptop off-screen on the LEFT — GSAP will animate it to center
+                this.laptopGroup.position.set(-12, -1, 46);
+                this.laptopGroup.rotation.set(0.2, -0.4, 0.05);
+
+                // Add subtle emissive glow to all materials
+                this.laptopModel.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        if (child.material) {
+                            child.material.envMapIntensity = 1.5;
+                            // Screen glow effect
+                            if (child.material.name && child.material.name.toLowerCase().includes('screen')) {
+                                child.material.emissive = new THREE.Color('#00e5ff');
+                                child.material.emissiveIntensity = 0.3;
+                            }
+                        }
+                    }
+                });
+
+                this.scene.add(this.laptopGroup);
+
+                // Add a spotlight pointing at the laptop (centered)
+                const spotLight = new THREE.SpotLight(0x00e5ff, 3, 35, Math.PI / 5, 0.5, 1);
+                spotLight.position.set(5, 8, 50);
+                spotLight.target = this.laptopGroup;
+                this.scene.add(spotLight);
+
+                // Fill light from the other side
+                const fillLight = new THREE.SpotLight(0xa855f7, 2, 30, Math.PI / 4, 0.5, 1);
+                fillLight.position.set(-5, -3, 50);
+                fillLight.target = this.laptopGroup;
+                this.scene.add(fillLight);
+
+                // Rim light from behind
+                const rimLight = new THREE.PointLight(0xff006e, 1.5, 25);
+                rimLight.position.set(0, 3, 39);
+                this.scene.add(rimLight);
+
+                this.loadingProgress = 1;
+                console.log('✅ Laptop model loaded successfully');
+            },
+            (progress) => {
+                if (progress.total > 0) {
+                    this.loadingProgress = progress.loaded / progress.total;
+                }
+            },
+            (error) => {
+                console.warn('⚠️ Could not load laptop model:', error);
+                this.loadingProgress = 1; // Don't block loading
+            }
+        );
     }
 
     createParticles() {
@@ -115,16 +201,16 @@ export class Scene3D {
 
     createSectionObjects() {
         const objectTypes = [
-            () => new THREE.IcosahedronGeometry(3, 1),      // Hero
+            // Skip index 0 — hero uses laptop model instead
             () => new THREE.TorusKnotGeometry(2, 0.6, 80, 16), // About
-            () => new THREE.OctahedronGeometry(2.5, 0),       // Skills
-            () => new THREE.TorusGeometry(2.2, 0.7, 16, 50),  // Projects
-            () => new THREE.DodecahedronGeometry(2.3, 0),      // Timeline
-            () => new THREE.IcosahedronGeometry(2.8, 0),       // Contact
+            () => new THREE.OctahedronGeometry(2.5, 0),          // Skills
+            () => new THREE.TorusGeometry(2.2, 0.7, 16, 50),    // Projects
+            () => new THREE.DodecahedronGeometry(2.3, 0),        // Timeline
+            () => new THREE.IcosahedronGeometry(2.8, 0),         // Contact
         ];
 
-        const sectionColors = ['#00e5ff', '#a855f7', '#f7df1e', '#ff006e', '#ffd700', '#3b82f6'];
-        const zPositions = [35, 20, 5, -15, -35, -50];
+        const sectionColors = ['#a855f7', '#f7df1e', '#ff006e', '#ffd700', '#3b82f6'];
+        const zPositions = [20, 5, -15, -35, -50];
 
         sectionColors.forEach((color, index) => {
             const geometry = objectTypes[index]();
@@ -149,15 +235,19 @@ export class Scene3D {
     }
 
     createLights() {
-        const ambientLight = new THREE.AmbientLight(0x111133, 0.5);
+        const ambientLight = new THREE.AmbientLight(0x111133, 0.6);
         this.scene.add(ambientLight);
 
-        const dirLight = new THREE.DirectionalLight(0x00e5ff, 0.6);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
         dirLight.position.set(5, 10, 5);
         this.scene.add(dirLight);
 
-        const lightColors = [0x00e5ff, 0xa855f7, 0xf7df1e, 0xff006e, 0xffd700, 0x3b82f6];
-        const zPositions = [35, 20, 5, -15, -35, -50];
+        // Hemisphere light for better overall illumination
+        const hemiLight = new THREE.HemisphereLight(0x00e5ff, 0x030014, 0.3);
+        this.scene.add(hemiLight);
+
+        const lightColors = [0xa855f7, 0xf7df1e, 0xff006e, 0xffd700, 0x3b82f6];
+        const zPositions = [20, 5, -15, -35, -50];
 
         this.pointLights = [];
         lightColors.forEach((color, i) => {
@@ -202,6 +292,11 @@ export class Scene3D {
             this.dust.rotation.y = -elapsed * 0.006;
         }
 
+        // Gentle laptop float (only subtle Y bobbing — main movement handled by GSAP)
+        if (this.laptopGroup && this.laptopGroup.userData.floatEnabled) {
+            this.laptopGroup.position.y += Math.sin(elapsed * 0.5) * 0.003;
+        }
+
         // Rotate section objects
         this.sectionObjects.forEach((obj, i) => {
             obj.rotation.x = elapsed * (0.12 + i * 0.04);
@@ -224,7 +319,11 @@ export class Scene3D {
         return this.sectionObjects;
     }
 
+    getLaptopGroup() {
+        return this.laptopGroup;
+    }
+
     getLoadingProgress() {
-        return 1;
+        return this.loadingProgress;
     }
 }

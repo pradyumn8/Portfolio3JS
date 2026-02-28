@@ -7,6 +7,7 @@ gsap.registerPlugin(ScrollTrigger);
 /**
  * Portfolio GSAP animations:
  * - Hero intro sequence with typewriter
+ * - Laptop model scroll animation (fade + rotate as user leaves hero)
  * - Scroll-driven camera movement through 3D space
  * - Section reveals (about, skills, projects, timeline, contact)
  * - Navigation highlighting
@@ -40,7 +41,7 @@ export function initAnimations(scene3d) {
         let speed = isDeleting ? 40 : 80;
 
         if (!isDeleting && charIndex === current.length) {
-            speed = 2000; // Pause at end
+            speed = 2000;
             isDeleting = true;
         } else if (isDeleting && charIndex === 0) {
             isDeleting = false;
@@ -51,7 +52,6 @@ export function initAnimations(scene3d) {
         setTimeout(typeWriter, speed);
     }
 
-    // Start typewriter after hero anim
     setTimeout(typeWriter, 2500);
 
     // =============================
@@ -133,6 +133,72 @@ export function initAnimations(scene3d) {
             duration: 1,
             ease: 'power2.out',
         }, '-=0.3');
+
+    // =============================
+    // LAPTOP MODEL ANIMATIONS
+    // =============================
+    function setupLaptopAnimations() {
+        const laptopGroup = scene3d.getLaptopGroup();
+        if (!laptopGroup) {
+            setTimeout(setupLaptopAnimations, 200);
+            return;
+        }
+
+        // --- INTRO: Slide from LEFT to CENTER ---
+        gsap.to(laptopGroup.position, {
+            x: 0,
+            y: -1,
+            duration: 2,
+            ease: 'power3.out',
+            delay: 0.5,
+            onComplete: () => {
+                laptopGroup.userData.floatEnabled = true;
+            }
+        });
+        gsap.to(laptopGroup.rotation, {
+            y: -0.15,
+            x: 0.2,
+            z: 0,
+            duration: 2,
+            ease: 'power3.out',
+            delay: 0.5,
+        });
+
+        // --- SCROLL: Move DOWN (-Y) with tilt + scale + fade ---
+        ScrollTrigger.create({
+            trigger: '#hero',
+            start: 'top top',
+            end: 'bottom top',
+            scrub: 1.2,
+            onUpdate: (self) => {
+                const p = self.progress;
+
+                // Move downward (-Y direction) from resting y=-1
+                laptopGroup.position.y = -1 - p * 15;
+                // Slight forward push
+                laptopGroup.position.z = 46 - p * 6;
+
+                // Tilt forward as it drops
+                laptopGroup.rotation.x = 0.2 + p * 0.5;
+                // Spin slightly
+                laptopGroup.rotation.y = -0.15 - p * 0.4;
+
+                // Scale down gently
+                const scale = 1 - p * 0.25;
+                laptopGroup.scale.setScalar(scale);
+
+                // Fade out materials
+                laptopGroup.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        child.material.transparent = true;
+                        child.material.opacity = 1 - p * 0.9;
+                    }
+                });
+            }
+        });
+    }
+
+    setupLaptopAnimations();
 
     // =============================
     // SCROLL-DRIVEN CAMERA
@@ -260,7 +326,7 @@ export function initAnimations(scene3d) {
     });
 
     const projectCards = document.querySelectorAll('.project-card');
-    projectCards.forEach((card, i) => {
+    projectCards.forEach((card) => {
         gsap.to(card, {
             opacity: 1, y: 0, duration: 0.8,
             scrollTrigger: {
@@ -285,7 +351,7 @@ export function initAnimations(scene3d) {
     });
 
     const timelineItems = document.querySelectorAll('.timeline__item');
-    timelineItems.forEach((item, i) => {
+    timelineItems.forEach((item) => {
         gsap.to(item, {
             opacity: 1, x: 0, duration: 0.8,
             scrollTrigger: {
@@ -329,11 +395,11 @@ export function initAnimations(scene3d) {
     // =============================
     // 3D OBJECT GLOW ON SCROLL
     // =============================
-    const sectionIds = ['hero', 'about', 'skills', 'projects', 'timeline', 'contact'];
+    // Section objects now map: 0=about, 1=skills, 2=projects, 3=timeline, 4=contact
+    const sectionIds = ['about', 'skills', 'projects', 'timeline', 'contact'];
     sectionIds.forEach((id, i) => {
         if (!sectionObjects[i]) return;
 
-        // Pulse on enter
         gsap.to(sectionObjects[i].material, {
             opacity: 0.55,
             emissiveIntensity: 0.45,
@@ -345,7 +411,6 @@ export function initAnimations(scene3d) {
             }
         });
 
-        // Dim on leave
         gsap.to(sectionObjects[i].material, {
             opacity: 0.12,
             emissiveIntensity: 0.08,
@@ -357,7 +422,6 @@ export function initAnimations(scene3d) {
             }
         });
 
-        // Scale up
         gsap.to(sectionObjects[i].scale, {
             x: 1.4, y: 1.4, z: 1.4,
             scrollTrigger: {
@@ -368,7 +432,6 @@ export function initAnimations(scene3d) {
             }
         });
 
-        // Scale down
         gsap.to(sectionObjects[i].scale, {
             x: 1, y: 1, z: 1,
             scrollTrigger: {
