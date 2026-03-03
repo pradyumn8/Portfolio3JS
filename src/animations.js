@@ -144,6 +144,17 @@ export function initAnimations(scene3d) {
             return;
         }
 
+        const lidPart = scene3d.getLidPart();
+        const lidOriginalRotation = scene3d.getLidOriginalRotation();
+        let slideInDone = false;
+        let openDone = !lidPart; // If no lid found, consider open done
+
+        function checkAllDone() {
+            if (slideInDone && openDone) {
+                scene3d.autoRotateEnabled = true;
+            }
+        }
+
         // --- INTRO: Slide from LEFT to CENTER ---
         gsap.to(laptopGroup.position, {
             x: 0,
@@ -152,7 +163,8 @@ export function initAnimations(scene3d) {
             ease: 'power3.out',
             delay: 0.5,
             onComplete: () => {
-                laptopGroup.userData.floatEnabled = true;
+                slideInDone = true;
+                checkAllDone();
             }
         });
         gsap.to(laptopGroup.rotation, {
@@ -164,14 +176,51 @@ export function initAnimations(scene3d) {
             delay: 0.5,
         });
 
-        // --- SCROLL: Move DOWN (-Y) with tilt + scale + fade ---
+        // --- OPEN LID ANIMATION (rotate lid part back to original) ---
+        if (lidPart && lidOriginalRotation !== null) {
+            gsap.to(lidPart.rotation, {
+                x: lidOriginalRotation,
+                duration: 1.8,
+                ease: 'power2.out',
+                delay: 1.0, // Start opening after slide-in begins
+                onComplete: () => {
+                    openDone = true;
+                    checkAllDone();
+                }
+            });
+        } else if (!lidPart) {
+            // Fallback: tilt the whole laptop from more closed to open position
+            // (start more tilted forward, animate to normal)
+            laptopGroup.rotation.x = 0.8; // More tilted = looks more closed
+            gsap.to(laptopGroup.rotation, {
+                x: 0.2,
+                duration: 2,
+                ease: 'power2.out',
+                delay: 0.8,
+                onComplete: () => {
+                    openDone = true;
+                    checkAllDone();
+                }
+            });
+        }
+
+        // --- SCROLL: Disable auto-rotate and take manual control ---
         ScrollTrigger.create({
             trigger: '#hero',
             start: 'top top',
             end: 'bottom top',
             scrub: 1.2,
+            onEnterBack: () => {
+                // Re-enable auto-rotate when scrolling back to hero
+                scene3d.autoRotateEnabled = true;
+            },
             onUpdate: (self) => {
                 const p = self.progress;
+
+                // Disable auto-rotate once scrolling begins
+                if (p > 0.02) {
+                    scene3d.autoRotateEnabled = false;
+                }
 
                 // Move downward (-Y direction) from resting y=-1
                 laptopGroup.position.y = -1 - p * 15;

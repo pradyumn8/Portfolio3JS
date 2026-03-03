@@ -20,6 +20,9 @@ export class Scene3D {
         this.sectionObjects = [];
         this.laptopModel = null;
         this.loadingProgress = 0;
+        this.autoRotateEnabled = false;
+        this.autoRotateSpeed = 0.15; // radians per second
+        this.autoRotateBaseY = -0.15; // base Y rotation after intro animation
 
         this.init();
         this.createParticles();
@@ -77,6 +80,67 @@ export class Scene3D {
                 // Start laptop off-screen on the LEFT — GSAP will animate it to center
                 this.laptopGroup.position.set(-12, -1, 46);
                 this.laptopGroup.rotation.set(0.2, -0.4, 0.05);
+
+                // ============================
+                // FIND LID/SCREEN FOR OPEN ANIMATION
+                // ============================
+                // Log model hierarchy to understand structure
+                this.lidPart = null;
+                console.log('📋 Laptop model hierarchy:');
+                this.laptopModel.traverse((child) => {
+                    if (child.name) {
+                        const indent = '  '.repeat(child.ancestors ? child.ancestors.length : 0);
+                        console.log(`  ${child.type}: "${child.name}" pos(${child.position.x.toFixed(2)}, ${child.position.y.toFixed(2)}, ${child.position.z.toFixed(2)})`);
+                    }
+                    // Try to identify the lid/screen part by common naming conventions
+                    const name = (child.name || '').toLowerCase();
+                    if (
+                        name.includes('lid') || name.includes('screen') ||
+                        name.includes('top') || name.includes('display') ||
+                        name.includes('cover') || name.includes('monitor')
+                    ) {
+                        if (!this.lidPart) {
+                            this.lidPart = child;
+                            console.log(`🖥️ Found lid part: "${child.name}"`);
+                        }
+                    }
+                });
+
+                // If we couldn't find by name, try finding by position
+                // The lid is typically the part above the hinge (higher Y in default pose)
+                if (!this.lidPart) {
+                    let highestChild = null;
+                    let highestY = -Infinity;
+                    this.laptopModel.children.forEach((child) => {
+                        if (child.isObject3D && child.children && child.children.length > 0) {
+                            const childBox = new THREE.Box3().setFromObject(child);
+                            const childCenter = childBox.getCenter(new THREE.Vector3());
+                            console.log(`  Child "${child.name}" center Y: ${childCenter.y.toFixed(2)}`);
+                            if (childCenter.y > highestY) {
+                                highestY = childCenter.y;
+                                highestChild = child;
+                            }
+                        }
+                    });
+                    // Only use if we have multiple children (otherwise the model is single-piece)
+                    if (highestChild && this.laptopModel.children.length > 1) {
+                        this.lidPart = highestChild;
+                        console.log(`🖥️ Using highest child as lid: "${highestChild.name}"`);
+                    }
+                }
+
+                // Set initial closed state if lid found
+                if (this.lidPart) {
+                    // Store original rotation for reference
+                    this.lidOriginalRotation = this.lidPart.rotation.x;
+                    // Close the lid: rotate it -90 degrees (or approximately) around X axis
+                    this.lidPart.rotation.x = this.lidOriginalRotation - Math.PI / 2;
+                    console.log(`🔒 Lid closed: rotated from ${this.lidOriginalRotation.toFixed(2)} to ${this.lidPart.rotation.x.toFixed(2)}`);
+                } else {
+                    console.log('⚠️ Could not find lid part — will animate whole laptop tilt instead');
+                    // Fallback: start tilted forward (like closed) and open up
+                    this.lidOriginalRotation = null;
+                }
 
                 // Add subtle emissive glow to all materials
                 this.laptopModel.traverse((child) => {
@@ -282,6 +346,8 @@ export class Scene3D {
 
         const elapsed = this.clock.getElapsedTime();
 
+        // Note: Laptop open/close animation is driven by GSAP via lid rotation
+
         // Rotate particles
         if (this.particles) {
             this.particles.rotation.y = elapsed * 0.012;
@@ -292,9 +358,17 @@ export class Scene3D {
             this.dust.rotation.y = -elapsed * 0.006;
         }
 
-        // Gentle laptop float (only subtle Y bobbing — main movement handled by GSAP)
-        if (this.laptopGroup && this.laptopGroup.userData.floatEnabled) {
-            this.laptopGroup.position.y += Math.sin(elapsed * 0.5) * 0.003;
+        // Laptop auto-rotate + float when enabled
+        if (this.laptopGroup && this.autoRotateEnabled) {
+            // Smooth Y-axis auto-rotation
+            this.laptopGroup.rotation.y = this.autoRotateBaseY + elapsed * this.autoRotateSpeed;
+
+            // Gentle floating bob on Y axis
+            this.laptopGroup.position.y = -1 + Math.sin(elapsed * 0.6) * 0.15;
+
+            // Subtle breathing tilt on X and Z
+            this.laptopGroup.rotation.x = 0.2 + Math.sin(elapsed * 0.4) * 0.04;
+            this.laptopGroup.rotation.z = Math.sin(elapsed * 0.3) * 0.02;
         }
 
         // Rotate section objects
@@ -325,5 +399,13 @@ export class Scene3D {
 
     getLoadingProgress() {
         return this.loadingProgress;
+    }
+
+    getLidPart() {
+        return this.lidPart;
+    }
+
+    getLidOriginalRotation() {
+        return this.lidOriginalRotation;
     }
 }
